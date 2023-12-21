@@ -7,6 +7,11 @@ const cors = require('cors');
 app.use(cors());
 app.use(express.json()); 
 
+const path = require('path');
+
+// Serve static files from the 'public' directory
+app.use(express.static(path.join(__dirname, 'dashboard_frontend')));
+
 
 class OcppChargerSimulator {
     constructor(chargerId, centralSystemUrl, heartbeatInterval) {

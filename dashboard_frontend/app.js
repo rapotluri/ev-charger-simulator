@@ -2,7 +2,7 @@ document.getElementById('addChargerBtn').addEventListener('click', addCharger);
 
 function addCharger() {
     const chargerName = document.getElementById('chargerNameInput').value;
-    fetch('http://localhost:3000/chargers', {
+    fetch('https://scaling-funicular-xxvpwv97rgpcp9xw-3000.app.github.dev/chargers', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -18,21 +18,21 @@ function addCharger() {
 }
 
 function startTransaction(chargerId) {
-    fetch(`http://localhost:3000/chargers/${chargerId}/start`, { method: 'POST' })
+    fetch(`https://scaling-funicular-xxvpwv97rgpcp9xw-3000.app.github.dev/chargers/${chargerId}/start`, { method: 'POST' })
     .then(response => response.text())
     .then(result => console.log(result))
     .catch(error => console.error('Error:', error));
 }
 
 function stopTransaction(chargerId) {
-    fetch(`http://localhost:3000/chargers/${chargerId}/stop`, { method: 'POST' })
+    fetch(`https://scaling-funicular-xxvpwv97rgpcp9xw-3000.app.github.dev/chargers/${chargerId}/stop`, { method: 'POST' })
     .then(response => response.text())
     .then(result => console.log(result))
     .catch(error => console.error('Error:', error));
 }
 
 function removeCharger(chargerId) {
-    fetch(`http://localhost:3000/chargers/${chargerId}`, { method: 'DELETE' })
+    fetch(`https://scaling-funicular-xxvpwv97rgpcp9xw-3000.app.github.dev/chargers/${chargerId}`, { method: 'DELETE' })
     .then(response => response.text())
     .then(result => {
         console.log(result);
