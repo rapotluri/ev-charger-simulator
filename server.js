@@ -9,6 +9,8 @@ class OcppChargerSimulator {
         this.centralSystemUrl = centralSystemUrl;
         this.heartbeatInterval = heartbeatInterval;
         this.websocket = new WebSocket(`${centralSystemUrl}/${chargerId}`, 'ocpp1.6');
+        this.currentTransactionId = null;
+        this.meterValueInterval = null;
 
         this.websocket.on('open', () => this.onConnected());
         this.websocket.on('message', (message) => this.onMessage(message));
@@ -72,6 +74,39 @@ class OcppChargerSimulator {
         const message = JSON.stringify([2, this.generateUniqueId(), 'StartTransaction', startTransactionPayload]);
         this.websocket.send(message);
         console.log(`StartTransaction sent from charger ${this.chargerId} with idTag ${idTag}`);
+
+        // Send a StatusNotification for starting the transaction
+        this.sendStatusNotification('Charging');
+
+        // Start sending periodic meter values
+        this.meterValueInterval = setInterval(() => {
+            this.sendMeterValues();
+        }, 60000); // Send meter values every minute
+    }
+
+    sendMeterValues() {
+        const meterValuesPayload = {
+            connectorId: 1,
+            transactionId: this.currentTransactionId,
+            meterValue: [
+                {
+                    timestamp: new Date().toISOString(),
+                    sampledValue: [
+                        {
+                            value: '0', // This would be your actual meter value
+                            context: 'Sample.Periodic',
+                            format: 'Raw',
+                            measurand: 'Energy.Active.Import.Register',
+                            location: 'Outlet',
+                            unit: 'Wh'
+                        }
+                    ]
+                }
+            ]
+        };
+        const message = JSON.stringify([2, this.generateUniqueId(), 'MeterValues', meterValuesPayload]);
+        this.websocket.send(message);
+        console.log(`MeterValues sent from charger ${this.chargerId} for transactionId ${this.currentTransactionId}`);
     }
     
     stopTransaction(transactionId) {
@@ -85,6 +120,19 @@ class OcppChargerSimulator {
         const message = JSON.stringify([2, this.generateUniqueId(), 'StopTransaction', stopTransactionPayload]);
         this.websocket.send(message);
         console.log(`StopTransaction sent from charger ${this.chargerId} for transactionId ${transactionId}`);
+
+        // Send a StatusNotification for finishing the transaction
+        this.sendStatusNotification('Finishing');
+
+        // Clear the meter values interval
+        if (this.meterValueInterval) {
+            clearInterval(this.meterValueInterval);
+        }
+
+        // Send a StatusNotification for available again after some time
+        setTimeout(() => {
+            this.sendStatusNotification('Available');
+        }, 5000); // Wait 5 seconds before sending Available status
     }
 
     generateUniqueId() {
