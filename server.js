@@ -5,6 +5,7 @@ const port = 3000;
 
 const cors = require('cors');
 app.use(cors());
+app.use(express.json()); 
 
 
 class OcppChargerSimulator {
@@ -221,54 +222,138 @@ class OcppChargerSimulator {
 
 const chargers = {};
 
-app.get('/start-charger/:chargerId', (req, res) => {
-    const chargerId = req.params.chargerId;
+// app.get('/start-charger/:chargerId', (req, res) => {
+//     const chargerId = req.params.chargerId;
 
+//     if (chargers[chargerId]) {
+//         return res.status(400).send('Charger already exists');
+//     }
+
+//     const centralSystemUrl = 'ws://centralsystem.hypercharge.com/ocpp'; // Replace with your central system URL
+//     const heartbeatInterval = 10000; // Heartbeat interval in milliseconds (e.g., 10000 for 10 seconds)
+//     const charger = new OcppChargerSimulator(chargerId, centralSystemUrl, heartbeatInterval);
+
+//     chargers[chargerId] = charger; // Store the charger instance
+
+//     res.send(`Started charger simulation for charger ID: ${chargerId}`);
+// });
+
+// // Endpoint to simulate starting a transaction
+// app.get('/chargers/:chargerId/start-transaction', (req, res) => {
+//     const chargerId = req.params.chargerId;
+//     const idTag = req.query.idTag; // Expect an idTag as query parameter
+  
+//     if (!chargers[chargerId]) {
+//         return res.status(404).send('Charger not found');
+//     }
+  
+//     chargers[chargerId].startTransaction(idTag);
+
+//     // Start sending meter values every 20 seconds (as an example)
+//     chargers[chargerId].meterValueInterval = setInterval(() => {
+//         chargers[chargerId].sendMeterValues();
+//     }, 20000); // Change the interval as needed
+
+//     res.send(`Transaction started for charger ID: ${chargerId} with idTag: ${idTag}`);
+// });
+  
+// // Endpoint to simulate stopping a transaction
+// app.get('/chargers/:chargerId/stop-transaction', (req, res) => {
+//     const chargerId = req.params.chargerId;
+  
+//     if (!chargers[chargerId]) {
+//         return res.status(404).send('Charger not found');
+//     }
+  
+//     chargers[chargerId].stopTransaction();
+//     res.send(`Transaction stopped for charger ID: ${chargerId}`);
+// });
+
+// // Endpoint to delete a charger
+// app.delete('/chargers/:chargerId', (req, res) => {
+//     const chargerId = req.params.chargerId;
+//     if (!chargers[chargerId]) {
+//         return res.status(404).send('Charger not found');
+//     }
+//     chargers[chargerId].powerOff();
+//     delete chargers[chargerId];
+//     res.send(`Charger ${chargerId} deleted`);
+// });
+
+// // Endpoint to toggle the power state of a charger
+// app.post('/chargers/:chargerId/power', (req, res) => {
+//     const chargerId = req.params.chargerId;
+//     const action = req.body.action; // Expect 'on' or 'off' as the action
+
+//     if (!chargers[chargerId]) {
+//         return res.status(404).send('Charger not found');
+//     }
+
+//     if (action === 'on') {
+//         chargers[chargerId].powerOn();
+//     } else if (action === 'off') {
+//         chargers[chargerId].powerOff();
+//     } else {
+//         return res.status(400).send('Invalid action');
+//     }
+//     res.send(`Power ${action} for charger ${chargerId}`);
+// });
+
+// app.get('/chargers', (req, res) => {
+//     // Convert charger objects to a simpler representation if needed
+//     const chargerList = Object.keys(chargers).map((id) => ({
+//         id: id,
+//         isConnected: chargers[id].isConnected, // Example property
+//         // ... include other properties you want to send
+//     }));
+//     res.json(chargerList);
+// });
+
+// app.get('/get-chargers', (req, res) => {
+//     // This should return an array of charger objects
+//     // For example, you might have stored charger data in an in-memory object or a database
+//     // Replace the following line with your actual logic to retrieve charger data
+//     res.json(Object.values(chargers));
+// });
+
+// Add Charger
+app.post('/chargers', (req, res) => {
+    const chargerId = req.body.id;
     if (chargers[chargerId]) {
         return res.status(400).send('Charger already exists');
     }
-
-    const centralSystemUrl = 'ws://centralsystem.hypercharge.com/ocpp'; // Replace with your central system URL
-    const heartbeatInterval = 10000; // Heartbeat interval in milliseconds (e.g., 10000 for 10 seconds)
-    const charger = new OcppChargerSimulator(chargerId, centralSystemUrl, heartbeatInterval);
-
-    chargers[chargerId] = charger; // Store the charger instance
-
-    res.send(`Started charger simulation for charger ID: ${chargerId}`);
+    const charger = new OcppChargerSimulator(chargerId, 'ws://centralsystem.staging.hypercharge.com/ocpp', 10000);
+    chargers[chargerId] = charger;
+    res.json({ id: chargerId, status: 'Disconnected' });
 });
 
-// Endpoint to simulate starting a transaction
-app.get('/chargers/:chargerId/start-transaction', (req, res) => {
+// Start Transaction
+app.post('/chargers/:chargerId/start', (req, res) => {
     const chargerId = req.params.chargerId;
-    const idTag = req.query.idTag; // Expect an idTag as query parameter
-  
     if (!chargers[chargerId]) {
         return res.status(404).send('Charger not found');
     }
-  
-    chargers[chargerId].startTransaction(idTag);
+    chargers[chargerId].startTransaction('D39A6669');
 
-    // Start sending meter values every 20 seconds (as an example)
+    //Start sending meter values every 20 seconds
     chargers[chargerId].meterValueInterval = setInterval(() => {
         chargers[chargerId].sendMeterValues();
     }, 20000); // Change the interval as needed
 
-    res.send(`Transaction started for charger ID: ${chargerId} with idTag: ${idTag}`);
+    res.send(`Transaction started for charger ${chargerId}`);
 });
-  
-// Endpoint to simulate stopping a transaction
-app.get('/chargers/:chargerId/stop-transaction', (req, res) => {
+
+// Stop Transaction
+app.post('/chargers/:chargerId/stop', (req, res) => {
     const chargerId = req.params.chargerId;
-  
     if (!chargers[chargerId]) {
         return res.status(404).send('Charger not found');
     }
-  
     chargers[chargerId].stopTransaction();
-    res.send(`Transaction stopped for charger ID: ${chargerId}`);
+    res.send(`Transaction stopped for charger ${chargerId}`);
 });
 
-// Endpoint to delete a charger
+// Delete Charger
 app.delete('/chargers/:chargerId', (req, res) => {
     const chargerId = req.params.chargerId;
     if (!chargers[chargerId]) {
@@ -278,44 +363,6 @@ app.delete('/chargers/:chargerId', (req, res) => {
     delete chargers[chargerId];
     res.send(`Charger ${chargerId} deleted`);
 });
-
-// Endpoint to toggle the power state of a charger
-app.post('/chargers/:chargerId/power', (req, res) => {
-    const chargerId = req.params.chargerId;
-    const action = req.body.action; // Expect 'on' or 'off' as the action
-
-    if (!chargers[chargerId]) {
-        return res.status(404).send('Charger not found');
-    }
-
-    if (action === 'on') {
-        chargers[chargerId].powerOn();
-    } else if (action === 'off') {
-        chargers[chargerId].powerOff();
-    } else {
-        return res.status(400).send('Invalid action');
-    }
-    res.send(`Power ${action} for charger ${chargerId}`);
-});
-
-app.get('/chargers', (req, res) => {
-    // Convert charger objects to a simpler representation if needed
-    const chargerList = Object.keys(chargers).map((id) => ({
-        id: id,
-        isConnected: chargers[id].isConnected, // Example property
-        // ... include other properties you want to send
-    }));
-    res.json(chargerList);
-});
-
-app.get('/get-chargers', (req, res) => {
-    // This should return an array of charger objects
-    // For example, you might have stored charger data in an in-memory object or a database
-    // Replace the following line with your actual logic to retrieve charger data
-    res.json(Object.values(chargers));
-});
-
-
 
 app.listen(port, () => {
     console.log(`OCPP Charger Simulator running on http://localhost:${port}`);
