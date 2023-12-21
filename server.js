@@ -3,6 +3,10 @@ const WebSocket = require('ws');
 const app = express();
 const port = 3000;
 
+const cors = require('cors');
+app.use(cors());
+
+
 class OcppChargerSimulator {
     constructor(chargerId, centralSystemUrl, heartbeatInterval) {
         this.chargerId = chargerId;
@@ -17,6 +21,28 @@ class OcppChargerSimulator {
         this.websocket.on('message', (message) => this.onMessage(message));
         this.websocket.on('close', () => console.log(`Charger ${chargerId} disconnected`));
         this.websocket.on('error', (error) => console.error('WebSocket Error:', error));
+    }
+
+    powerOff() {
+        if (this.heartbeatTimer) {
+            clearInterval(this.heartbeatTimer);
+        }
+        if (this.websocket) {
+            this.websocket.close();
+        }
+        console.log(`Charger ${this.chargerId} powered off.`);
+    }
+    
+    powerOn() {
+        if (!this.websocket || this.websocket.readyState === WebSocket.CLOSED) {
+            this.websocket = new WebSocket(`${this.centralSystemUrl}/${this.chargerId}`, 'ocpp1.6');
+            this.websocket.on('open', () => this.onConnected());
+            this.websocket.on('message', (message) => this.onMessage(message));
+            this.websocket.on('close', () => console.log(`Charger ${this.chargerId} disconnected`));
+            this.websocket.on('error', (error) => console.error('WebSocket Error:', error));
+        } else {
+            console.log(`Charger ${this.chargerId} is already powered on.`);
+        }
     }
 
     onConnected() {
@@ -241,6 +267,55 @@ app.get('/chargers/:chargerId/stop-transaction', (req, res) => {
     chargers[chargerId].stopTransaction();
     res.send(`Transaction stopped for charger ID: ${chargerId}`);
 });
+
+// Endpoint to delete a charger
+app.delete('/chargers/:chargerId', (req, res) => {
+    const chargerId = req.params.chargerId;
+    if (!chargers[chargerId]) {
+        return res.status(404).send('Charger not found');
+    }
+    chargers[chargerId].powerOff();
+    delete chargers[chargerId];
+    res.send(`Charger ${chargerId} deleted`);
+});
+
+// Endpoint to toggle the power state of a charger
+app.post('/chargers/:chargerId/power', (req, res) => {
+    const chargerId = req.params.chargerId;
+    const action = req.body.action; // Expect 'on' or 'off' as the action
+
+    if (!chargers[chargerId]) {
+        return res.status(404).send('Charger not found');
+    }
+
+    if (action === 'on') {
+        chargers[chargerId].powerOn();
+    } else if (action === 'off') {
+        chargers[chargerId].powerOff();
+    } else {
+        return res.status(400).send('Invalid action');
+    }
+    res.send(`Power ${action} for charger ${chargerId}`);
+});
+
+app.get('/chargers', (req, res) => {
+    // Convert charger objects to a simpler representation if needed
+    const chargerList = Object.keys(chargers).map((id) => ({
+        id: id,
+        isConnected: chargers[id].isConnected, // Example property
+        // ... include other properties you want to send
+    }));
+    res.json(chargerList);
+});
+
+app.get('/get-chargers', (req, res) => {
+    // This should return an array of charger objects
+    // For example, you might have stored charger data in an in-memory object or a database
+    // Replace the following line with your actual logic to retrieve charger data
+    res.json(Object.values(chargers));
+});
+
+
 
 app.listen(port, () => {
     console.log(`OCPP Charger Simulator running on http://localhost:${port}`);
