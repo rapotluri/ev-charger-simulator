@@ -10,6 +10,7 @@ class OcppChargerSimulator {
         this.heartbeatInterval = heartbeatInterval;
         this.websocket = new WebSocket(`${centralSystemUrl}/${chargerId}`, 'ocpp1.6');
         this.currentTransactionId = null;
+        this.currentIdTag = null;
         this.meterValueInterval = null;
 
         this.websocket.on('open', () => this.onConnected());
@@ -42,6 +43,10 @@ class OcppChargerSimulator {
             console.log(`BootNotification accepted by central system.`);
             this.heartbeatTimer = setInterval(() => this.sendHeartbeat(), this.heartbeatInterval);
             this.sendStatusNotification('Available');
+        } else if (response[0] === 3 && response[1] && response[2] && response[2].transactionId) {
+            // Save the transactionId when starting a transaction
+            this.currentTransactionId = response[2].transactionId;
+            console.log(`Transaction started with ID: ${this.currentTransactionId}`);
         }
         console.log(`Message received from central system: ${message}`);
     }
@@ -65,8 +70,9 @@ class OcppChargerSimulator {
     }
 
     startTransaction(idTag) {
+        this.currentIdTag = idTag; // Save the idTag for the current transaction
         const startTransactionPayload = {
-          connectorId: 1, // Assuming only one connector for the simulation
+          connectorId: 1,
           idTag: idTag,
           meterStart: 0,
           timestamp: new Date().toISOString(),
@@ -77,14 +83,28 @@ class OcppChargerSimulator {
 
         // Send a StatusNotification for starting the transaction
         this.sendStatusNotification('Charging');
-
-        // Start sending periodic meter values
-        this.meterValueInterval = setInterval(() => {
-            this.sendMeterValues();
-        }, 60000); // Send meter values every minute
     }
 
     sendMeterValues() {
+        if (!this.currentTransactionId) {
+            console.log('No transaction active to send meter values for.');
+            return;
+        }
+
+        // Assuming these are constants for now, these can be dynamically changed later
+        const voltage = 208; // Volts
+        const current = 32;  // Amps
+
+        // Calculate power (W) using P = V * I
+        const power = voltage * current; // Watts
+
+        // Assuming we send meter values every 20 seconds
+        const energyIncrement = (power * (20 / 3600)); // Convert power to Wh for 20 seconds
+
+        // If meterStart is not defined, initialize it with some starting value.
+        this.meterStart = this.meterStart ?? 0;
+        this.meterStart += energyIncrement; // Increment the energy
+
         const meterValuesPayload = {
             connectorId: 1,
             transactionId: this.currentTransactionId,
@@ -93,12 +113,36 @@ class OcppChargerSimulator {
                     timestamp: new Date().toISOString(),
                     sampledValue: [
                         {
-                            value: '0', // This would be your actual meter value
+                            value: this.meterStart.toFixed(1), // Wh
                             context: 'Sample.Periodic',
                             format: 'Raw',
                             measurand: 'Energy.Active.Import.Register',
                             location: 'Outlet',
                             unit: 'Wh'
+                        },
+                        {
+                            value: current.toFixed(1), // A
+                            context: 'Sample.Periodic',
+                            format: 'Raw',
+                            measurand: 'Current.Import',
+                            location: 'Outlet',
+                            unit: 'A'
+                        },
+                        {
+                            value: voltage.toFixed(1), // V
+                            context: 'Sample.Periodic',
+                            format: 'Raw',
+                            measurand: 'Voltage',
+                            location: 'Outlet',
+                            unit: 'V'
+                        },
+                        {
+                            value: power.toFixed(1), // W
+                            context: 'Sample.Periodic',
+                            format: 'Raw',
+                            measurand: 'Power.Active.Import',
+                            location: 'Outlet',
+                            unit: 'W'
                         }
                     ]
                 }
@@ -108,18 +152,26 @@ class OcppChargerSimulator {
         this.websocket.send(message);
         console.log(`MeterValues sent from charger ${this.chargerId} for transactionId ${this.currentTransactionId}`);
     }
-    
-    stopTransaction(transactionId) {
+
+    stopTransaction() {
+        if (!this.currentTransactionId || !this.currentIdTag) {
+            console.log('No transaction active to stop.');
+            return;
+        }
         const stopTransactionPayload = {
-          transactionId: transactionId,
-          idTag: "SampleTag", // Replace with actual tag if needed
-          meterStop: 1337, // Replace with the actual meter value
-          timestamp: new Date().toISOString(),
-          reason: 'EVDisconnected'
+            transactionId: this.currentTransactionId,
+            idTag: this.currentIdTag,
+            meterStop: this.meterStart, // Replace with the actual meter value
+            timestamp: new Date().toISOString(),
+            reason: 'EVDisconnected'
         };
         const message = JSON.stringify([2, this.generateUniqueId(), 'StopTransaction', stopTransactionPayload]);
         this.websocket.send(message);
-        console.log(`StopTransaction sent from charger ${this.chargerId} for transactionId ${transactionId}`);
+        console.log(`StopTransaction sent from charger ${this.chargerId} for transactionId ${this.currentTransactionId}`);
+        
+        // Reset the transaction state
+        this.currentTransactionId = null;
+        this.currentIdTag = null;
 
         // Send a StatusNotification for finishing the transaction
         this.sendStatusNotification('Finishing');
@@ -127,6 +179,7 @@ class OcppChargerSimulator {
         // Clear the meter values interval
         if (this.meterValueInterval) {
             clearInterval(this.meterValueInterval);
+            this.meterValueInterval = null;
         }
 
         // Send a StatusNotification for available again after some time
@@ -149,7 +202,6 @@ app.get('/start-charger/:chargerId', (req, res) => {
         return res.status(400).send('Charger already exists');
     }
 
-
     const centralSystemUrl = 'ws://centralsystem.hypercharge.com/ocpp'; // Replace with your central system URL
     const heartbeatInterval = 10000; // Heartbeat interval in milliseconds (e.g., 10000 for 10 seconds)
     const charger = new OcppChargerSimulator(chargerId, centralSystemUrl, heartbeatInterval);
@@ -159,31 +211,35 @@ app.get('/start-charger/:chargerId', (req, res) => {
     res.send(`Started charger simulation for charger ID: ${chargerId}`);
 });
 
-
 // Endpoint to simulate starting a transaction
 app.get('/chargers/:chargerId/start-transaction', (req, res) => {
     const chargerId = req.params.chargerId;
     const idTag = req.query.idTag; // Expect an idTag as query parameter
   
     if (!chargers[chargerId]) {
-      return res.status(404).send('Charger not found');
+        return res.status(404).send('Charger not found');
     }
   
     chargers[chargerId].startTransaction(idTag);
+
+    // Start sending meter values every 20 seconds (as an example)
+    chargers[chargerId].meterValueInterval = setInterval(() => {
+        chargers[chargerId].sendMeterValues();
+    }, 20000); // Change the interval as needed
+
     res.send(`Transaction started for charger ID: ${chargerId} with idTag: ${idTag}`);
 });
   
 // Endpoint to simulate stopping a transaction
 app.get('/chargers/:chargerId/stop-transaction', (req, res) => {
     const chargerId = req.params.chargerId;
-    const transactionId = req.query.transactionId; // Expect a transactionId as query parameter
   
     if (!chargers[chargerId]) {
-      return res.status(404).send('Charger not found');
+        return res.status(404).send('Charger not found');
     }
   
-    chargers[chargerId].stopTransaction(transactionId);
-    res.send(`Transaction stopped for charger ID: ${chargerId} with transactionId: ${transactionId}`);
+    chargers[chargerId].stopTransaction();
+    res.send(`Transaction stopped for charger ID: ${chargerId}`);
 });
 
 app.listen(port, () => {
